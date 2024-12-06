@@ -159,8 +159,7 @@ def run_kfold_eval(
   labels: np.ndarray, 
   n_folds: int, 
   model: object, 
-  model_params: dict,
-	save_dir: str, 
+  model_params: dict | None,
   output_path: str,
   name: str='rf_model', 
   seed=42
@@ -174,18 +173,23 @@ def run_kfold_eval(
         )
     oof_preds = []
     train_preds = []
-    test_preds = []
 
     train_metrics = {}
     val_metrics = {}
 
-    feat_importances = np.zeros((len(features[0])))
+    feat_importances = np.zeros(features.shape[1])
 
     bar = tqdm(total=n_folds)
     for fold, (train_idx, val_idx) in enumerate(kf.split(features)):
-        x_train, x_val = features[train_idx], features[val_idx]
-        y_train, y_val = labels[train_idx], labels[val_idx]
-        reg = model(**model_params)
+
+        if model_params != None:
+            x_train, x_val = features[train_idx], features[val_idx]
+            y_train, y_val = labels[train_idx], labels[val_idx]
+            reg = model(**model_params)
+        else:
+            x_train, x_val = features.iloc[train_idx], features.iloc[val_idx]
+            y_train, y_val = labels[train_idx], labels[val_idx]
+            reg = model
         reg.fit(x_train, y_train)
         
         # Prediction on train data
@@ -213,7 +217,7 @@ def run_kfold_eval(
         # Feature importance
         if hasattr(reg, 'feature_importances_'):
             feat_importances += reg.feature_importances_
-        else:
+        elif hasattr(reg, 'coef_'):
             feat_importances += reg.coef_
 
         pickle.dump(
