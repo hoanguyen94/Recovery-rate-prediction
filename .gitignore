@@ -4,3 +4,4 @@ src/.pt_tmp
 src/run
 src/saved_models
 tabpfn-extensions
+src/lightning_logs
