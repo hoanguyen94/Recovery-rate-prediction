@@ -14,6 +14,7 @@ test_labels_file = paste(current_path, "/data/test_labels2.xlsx", sep = "")
 
 training_prediction_file = paste(current_path, "/output/train_predictions.xlsx", sep = "")
 test_prediction_file = paste(current_path, "/output/test_predictions.xlsx", sep = "")
+oof_prediction_file = paste(current_path, "/output/oof_predictions.xlsx", sep = "")
 sheet_name = "cubist"
 
 set.seed(42)
@@ -110,8 +111,18 @@ test_rmse = rmse(test_labels, test_prediction)
 test_mape = mape(test_labels, test_prediction)
 test_r_squared = cor(test_labels, test_prediction)^2
 
-training_df = data.frame(value = train_prediction)
-test_df = data.frame(value = test_prediction)
+# save predictions
+train_df = data.frame(predictions = train_prediction)
+train_wb <- loadWorkbook(training_prediction_file)
+addWorksheet(train_wb, sheetName = sheet_name)
+writeData(train_wb, sheet_name, train_df)
+saveWorkbook(train_wb, training_prediction_file, overwrite = TRUE)
+
+test_df = data.frame(predictions = test_prediction)
+test_wb <- loadWorkbook(test_prediction_file)
+addWorksheet(test_wb, sheetName = sheet_name)
+writeData(test_wb, sheet_name, test_df)
+saveWorkbook(test_wb, test_prediction_file, overwrite = TRUE)
 
 ###### FEATURE IMPORTANCES
 importances = caret::varImp(model_rules)
@@ -164,18 +175,6 @@ test_rmse = rmse(test_labels, test_prediction)
 test_mape = mape(test_labels, test_prediction)
 test_r_squared = cor(test_labels, test_prediction)^2
 
-# save predictions
-train_df = data.frame(predictions = train_prediction)
-train_wb <- loadWorkbook(training_prediction_file)
-addWorksheet(train_wb, sheetName = sheet_name)
-writeData(train_wb, sheet_name, train_df)
-saveWorkbook(train_wb, training_prediction_file, overwrite = TRUE)
-
-test_df = data.frame(predictions = test_prediction)
-test_wb <- loadWorkbook(test_prediction_file)
-addWorksheet(test_wb, sheetName = sheet_name)
-writeData(test_wb, sheet_name, test_df)
-saveWorkbook(test_wb, test_prediction_file, overwrite = TRUE)
 
 ###### FEATURE IMPORTANCES
 importances_small = caret::varImp(model_rules_small)
@@ -212,13 +211,14 @@ features = rbind(train_features, test_features)
 labels = c(train_labels, test_labels)
 
 # Define the train control with 5-fold cross-validation
-train_control <- trainControl(method = "cv", 
+train_control = trainControl(method = "cv", 
                               number = 5, 
                               verboseIter = TRUE, 
-                              returnResamp = "all")
+                              returnResamp = "all",
+                              savePredictions  = "final")
 
 # set specific values from grid search
-grid <- expand.grid(committees = 100, neighbors = 9)
+grid = expand.grid(committees = 100, neighbors = 9)
 
 caret_grid = train(
   x = features, 
@@ -228,6 +228,13 @@ caret_grid = train(
   trControl = train_control
 )
 summary(caret_grid)
+
+oof_df = model_caret$pred
+# save predictions
+oof_wb <- loadWorkbook(oof_prediction_file)
+addWorksheet(oof_wb, sheetName = sheet_name)
+writeData(oof_wb, sheet_name, oof_df)
+saveWorkbook(oof_wb, oof_prediction_file, overwrite = TRUE)
 
 caret_grid
 

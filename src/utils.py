@@ -162,6 +162,7 @@ def run_kfold_eval(
   model_params: dict | None,
   output_path: str,
   name: str='rf_model', 
+  saving_model: bool=True,
   seed=42
 ):  
     kf = KFold(n_splits=n_folds)
@@ -171,7 +172,7 @@ def run_kfold_eval(
             shuffle=True,
             random_state=seed
         )
-    oof_preds = []
+    oof_preds = np.zeros(labels.shape[0])
     train_preds = []
 
     train_metrics = {}
@@ -205,7 +206,7 @@ def run_kfold_eval(
         
         # Prediction on val data
         preds = reg.predict(x_val)
-        oof_preds.append(preds)
+        oof_preds[val_idx] = preds
 
         # save metrics
         mae, mape, rmse, rsqr = calculate_metric(preds, y_val)
@@ -220,10 +221,11 @@ def run_kfold_eval(
         elif hasattr(reg, 'coef_'):
             feat_importances += reg.coef_
 
-        pickle.dump(
-            reg, 
-            open(os.path.join(output_path, f"{name}_{seed}_fold-{fold + 1}.pkl"), "wb")
-        )
+        if saving_model:
+            pickle.dump(
+                reg, 
+                open(os.path.join(output_path, f"{name}_{seed}_fold-{fold + 1}.pkl"), "wb")
+            )
         bar.update()
         
     feat_importances /= n_folds
