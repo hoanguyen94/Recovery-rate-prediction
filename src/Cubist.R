@@ -229,11 +229,34 @@ caret_grid = train(
 )
 summary(caret_grid)
 
-oof_df = model_caret$pred
+### SAVING OUT-OF-FOLD PREDICTIONS
+# Define the train control with 5-fold cross-validation
+train_control = trainControl(method = "cv", 
+                              number = 5, 
+                              verboseIter = TRUE, 
+                              returnResamp = "all",
+                              savePredictions  = "final")
+
+# set specific values from grid search
+grid = expand.grid(committees = 100, neighbors = 9)
+
+caret_grid = train(
+  x = train_features, 
+  y = train_labels,
+  method = "cubist",
+  tuneGrid = grid,
+  trControl = train_control
+)
+summary(caret_grid)
+
+oof_df = caret_grid$pred
+oof_df_sorted = oof_df[order(oof_df$rowIndex), ]
+
 # save predictions
+final_oof_df = data.frame(predictions = oof_df_sorted$pred)
 oof_wb <- loadWorkbook(oof_prediction_file)
 addWorksheet(oof_wb, sheetName = sheet_name)
-writeData(oof_wb, sheet_name, oof_df)
+writeData(oof_wb, sheet_name, final_oof_df)
 saveWorkbook(oof_wb, oof_prediction_file, overwrite = TRUE)
 
 caret_grid
@@ -263,93 +286,93 @@ shap_values <- fastshap::explain(
 # Create summary plot function
 plot_shap_summary <- function(shap_values, feature_data) {
     # Convert SHAP values to long format
-    shap_long <- as.data.frame(shap_values) %>%
+shap_long <- as.data.frame(shap_values) %>%
         gather(key = "feature", value = "shap_value") %>%
         mutate(
             abs_shap = abs(shap_value),
             feature = factor(feature)
         )
     
-    # Calculate mean absolute SHAP value for each feature
-    feature_importance <- shap_long %>%
-        group_by(feature) %>%
-        summarise(mean_abs_shap = mean(abs_shap)) %>%
-        arrange(desc(mean_abs_shap))
-    
-    # Reorder features by importance
-    shap_long$feature <- factor(shap_long$feature, 
-                              levels = feature_importance$feature)
-    
-    # Create plot
-    ggplot(shap_long, aes(x = feature, y = shap_value)) +
-        geom_violin(fill = "lightblue", alpha = 0.5) +
-        geom_boxplot(width = 0.1, fill = "white", alpha = 0.5) +
-        coord_flip() +
-        theme_minimal() +
-        labs(
-            title = "SHAP Values Distribution by Feature",
-            x = "Features",
-            y = "SHAP value"
-        )
+# Calculate mean absolute SHAP value for each feature
+feature_importance <- shap_long %>%
+    group_by(feature) %>%
+    summarise(mean_abs_shap = mean(abs_shap)) %>%
+    arrange(desc(mean_abs_shap))
+
+# Reorder features by importance
+shap_long$feature <- factor(shap_long$feature, 
+                            levels = feature_importance$feature)
+
+# Create plot
+ggplot(shap_long, aes(x = feature, y = shap_value)) +
+    geom_violin(fill = "lightblue", alpha = 0.5) +
+    geom_boxplot(width = 0.1, fill = "white", alpha = 0.5) +
+    coord_flip() +
+    theme_minimal() +
+    labs(
+        title = "SHAP Values Distribution by Feature",
+        x = "Features",
+        y = "SHAP value"
+    )
 }
 
 # Create feature importance plot based on SHAP values
 plot_shap_importance <- function(shap_values) {
-    # Calculate mean absolute SHAP values
-    importance <- colMeans(abs(shap_values)) %>%
-        sort(decreasing = TRUE)
-    
-    # Create data frame for plotting
-    importance_df <- data.frame(
-        feature = names(importance),
-        importance = importance
-    ) %>%
-        arrange(desc(importance)) %>%
-        head(30)  # Top 30 features
-    
-    # Create plot
-    ggplot(importance_df, aes(x = reorder(feature, importance), y = importance)) +
-        geom_bar(stat = "identity", fill = "steelblue") +
-        coord_flip() +
-        theme_minimal() +
-        labs(
-            title = "Feature Importance Based on SHAP Values",
-            x = "Features",
-            y = "Mean |SHAP value|"
-        )
+# Calculate mean absolute SHAP values
+importance <- colMeans(abs(shap_values)) %>%
+    sort(decreasing = TRUE)
+
+# Create data frame for plotting
+importance_df <- data.frame(
+    feature = names(importance),
+    importance = importance
+) %>%
+    arrange(desc(importance)) %>%
+    head(30)  # Top 30 features
+
+# Create plot
+ggplot(importance_df, aes(x = reorder(feature, importance), y = importance)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    coord_flip() +
+    theme_minimal() +
+    labs(
+        title = "Feature Importance Based on SHAP Values",
+        x = "Features",
+        y = "Mean |SHAP value|"
+    )
 }
 
 # Create individual explanation plot
 plot_individual_shap <- function(shap_values, observation_index = 1) {
-    # Get SHAP values for single observation
-    single_shap <- shap_values[observation_index,]
-    
-    # Create waterfall plot data
-    waterfall_data <- data.frame(
-        feature = names(single_shap),
-        shap_value = as.numeric(single_shap)
-    ) %>%
-        arrange(desc(abs(shap_value))) %>%
-        head(20)  # Top 20 features for clarity
-    
-    # Calculate cumulative values
-    waterfall_data$cumulative <- cumsum(waterfall_data$shap_value)
-    
-    # Create plot
-    ggplot(waterfall_data, aes(x = reorder(feature, abs(shap_value)))) +
-        geom_bar(aes(y = shap_value, fill = shap_value > 0), 
-                stat = "identity") +
-        geom_point(aes(y = cumulative), color = "red") +
-        geom_line(aes(y = cumulative, group = 1), color = "red") +
-        coord_flip() +
-        theme_minimal() +
-        scale_fill_manual(values = c("red", "blue")) +
-        labs(
-            title = paste("Individual SHAP Explanation for Observation", observation_index),
-            x = "Features",
-            y = "SHAP value"
-        ) +
-        theme(legend.position = "none")
+# Get SHAP values for single observation
+single_shap <- shap_values[observation_index,]
+
+# Create waterfall plot data
+waterfall_data <- data.frame(
+    feature = names(single_shap),
+    shap_value = as.numeric(single_shap)
+) %>%
+    arrange(desc(abs(shap_value))) %>%
+    head(20)  # Top 20 features for clarity
+
+# Calculate cumulative values
+waterfall_data$cumulative <- cumsum(waterfall_data$shap_value)
+
+# Create plot
+ggplot(waterfall_data, aes(x = reorder(feature, abs(shap_value)))) +
+    geom_bar(aes(y = shap_value, fill = shap_value > 0), 
+            stat = "identity") +
+    geom_point(aes(y = cumulative), color = "red") +
+    geom_line(aes(y = cumulative, group = 1), color = "red") +
+    coord_flip() +
+    theme_minimal() +
+    scale_fill_manual(values = c("red", "blue")) +
+    labs(
+        title = paste("Individual SHAP Explanation for Observation", observation_index),
+        x = "Features",
+        y = "SHAP value"
+    ) +
+    theme(legend.position = "none")
 }
 
 # Generate and save all plots
@@ -364,10 +387,10 @@ ggsave("shap_individual.png", individual_plot, width = 12, height = 8)
 
 # Create feature importance table
 shap_importance <- data.frame(
-    Feature = colnames(shap_values),
-    Mean_SHAP = colMeans(abs(shap_values))
+Feature = colnames(shap_values),
+Mean_SHAP = colMeans(abs(shap_values))
 ) %>%
-    arrange(desc(Mean_SHAP))
+arrange(desc(Mean_SHAP))
 
 # Print top 20 most important features
 print("Top 20 Most Important Features (SHAP):")
@@ -376,12 +399,12 @@ print(head(shap_importance, 20))
 # Compare with original feature importance
 print("\nComparison with Original Feature Importance:")
 comparison <- data.frame(
-    Feature = shap_importance$Feature,
-    SHAP_Importance = shap_importance$Mean_SHAP,
-    Original_Importance = importances$Overall[match(shap_importance$Feature, 
-                                                  importances$Feature)]
+Feature = shap_importance$Feature,
+SHAP_Importance = shap_importance$Mean_SHAP,
+Original_Importance = importances$Overall[match(shap_importance$Feature, 
+                                                importances$Feature)]
 ) %>%
-    arrange(desc(SHAP_Importance)) %>%
-    head(20)
+arrange(desc(SHAP_Importance)) %>%
+head(20)
 
 print(comparison)
